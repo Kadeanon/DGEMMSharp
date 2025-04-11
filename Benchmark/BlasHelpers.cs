@@ -1,4 +1,5 @@
 ﻿using System.Runtime.InteropServices;
+using MKLNET;
 
 namespace AutoGEMM.Benchmark
 {
@@ -54,17 +55,23 @@ namespace AutoGEMM.Benchmark
                     c, ldc);
             }
         }
-    }
 
-    internal enum Layout
-    {
-        RowMajor = 101,
-        ColMajor = 102
-    }
-
-    internal enum Trans
-    {
-        No = 111,
-        Yes = 112
+        public static void MKLDgemm(int m, int n, int k,
+            double[] arrayA, int lda,
+            double[] arrayB, int ldb,
+            double[] arrayC, int ldc)
+        {
+            fixed (double* a = arrayA, b = arrayB, c = arrayC)
+            {
+                MKLNET.Blas.Unsafe.gemm(
+                    Layout.RowMajor, Trans.No, Trans.No,
+                    m, n, k,
+                    1.0,
+                    a, lda,
+                    b, ldb,
+                    0.0,
+                    c, ldc);
+            }
+        }
     }
 }

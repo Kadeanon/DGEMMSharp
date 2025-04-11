@@ -1,5 +1,6 @@
 ﻿using AutoGEMM.Benchmark;
 using BenchmarkDotNet.Attributes;
+using MKLNET;
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
@@ -59,20 +60,30 @@ namespace DGEMMSharp.Benchmark
             {
                 val = r.NextDouble();
             }
+            MKLNET.MKL.set_threading_layer(MklThreading.SEQUENTIAL);
+            // single-thread OpenBlas is slower than MKL
+            BlasHelpers.OpenBlasSetNumThreads(1);
             ExtraSetup();
         }
 
 
         [Benchmark(Baseline = true)]
+        public unsafe void MKL()
+        {
+            BlasHelpers.MKLDgemm(
+                M, N, K, ArrayA, K, ArrayB, N, ArrayC, N);
+        }
+
+        [Benchmark]
         public unsafe void OpenBlas()
         {
             BlasHelpers.OpenBlasDgemm(
                 M, N, K, ArrayA, K, ArrayB, N, ArrayC, N);
         }
 
+
         public virtual void ExtraSetup()
         {
-            BlasHelpers.OpenBlasSetNumThreads(1);
         }
 
         public void CheckDebug(Action action, double eps = 1e-8)
