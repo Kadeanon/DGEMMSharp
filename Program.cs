@@ -2,11 +2,14 @@
 using DGEMMSharp.Benchmark.Zen2;
 
 #if DEBUG
-TestZen2 test = new()
-{
-    Length = 1024 * 8
-};
+TestZen2 test = new() { Length = 4096 + 3 };
+test.CheckDebug(test.Auto);
+test = new() { Length = 2048 };
 test.CheckDebug(test.Auto);
 #else
-BenchmarkDotNet.Running.BenchmarkRunner.Run<TestZen2>();
+var switcher = BenchmarkDotNet.Running.BenchmarkSwitcher.FromTypes([
+    typeof(TestZen2Small),
+    typeof(TestZen2Sequence),
+    typeof(TestZen2Parallel)]);
+switcher.RunAllJoined();
 #endif

@@ -1,4 +1,6 @@
-﻿using System;
+﻿using CommunityToolkit.HighPerformance;
+using CommunityToolkit.HighPerformance.Helpers;
+using System;
 using System.Buffers;
 using System.Collections.Generic;
 using System.Diagnostics;
@@ -15,7 +17,7 @@ using System.Threading.Tasks;
 
 namespace DGEMMSharp.Model
 {
-    public static class DGEMM
+    public static partial class DGEMM
     {
         #region parameters
         // Adjust these parameters to determine the optimal packing/kernel form.
@@ -84,9 +86,9 @@ namespace DGEMMSharp.Model
         /// <param name="c">Output matrix C (row-major order).</param>
         /// <param name="ldc">Leading dimension of matrix C.</param>
         public static void GEMM(int m, int n, int k,
-            ReadOnlySpan<double> a, int lda,
-            ReadOnlySpan<double> b, int ldb,
-            Span<double> c, int ldc)
+            ReadOnlyMemory<double> a, int lda,
+            ReadOnlyMemory<double> b, int ldb,
+            Memory<double> c, int ldc)
             => GEMM(m, n, k, alpha: 1, a, lda, b, ldb, beta: 0, c, ldc);
 
         /// <summary>
@@ -106,27 +108,24 @@ namespace DGEMMSharp.Model
         /// <param name="ldc">Leading dimension of matrix C.</param>
         public static void GEMM(int m, int n, int k, 
             double alpha,
-            ReadOnlySpan<double> a, int lda,
-            ReadOnlySpan<double> b, int ldb,
+            ReadOnlyMemory<double> a, int lda,
+            ReadOnlyMemory<double> b, int ldb,
             double beta,
-            Span<double> c, int ldc)
+            Memory<double> c, int ldc)
         {
             int aLength = a.Length;
             ArgumentOutOfRangeException.ThrowIfLessThan(aLength, m * lda, nameof(a));
-            ref double aHead = ref Unsafe.AsRef(in a[0]);
             int bLength = b.Length;
             ArgumentOutOfRangeException.ThrowIfLessThan(bLength, k * ldb, nameof(b));
-            ref double bHead = ref Unsafe.AsRef(in b[0]);
             int cLength = c.Length;
             ArgumentOutOfRangeException.ThrowIfLessThan(cLength, m * ldc, nameof(c));
-            ref double cHead = ref Unsafe.AsRef(in c[0]);
 
-            GEMM(m, n, k,
+            GEMMInner(m, n, k,
                 alpha,
-                ref aHead, lda,
-                ref bHead, ldb,
+                a, lda,
+                b, ldb,
                 beta,
-                ref cHead, ldc);
+                c, ldc);
         }
 
         /// <summary>
@@ -141,21 +140,19 @@ namespace DGEMMSharp.Model
         /// <param name="ldb">the leading dimension of matrix b</param>
         /// <param name="c">the managed pointer of data for matrix c, row-major</param>
         /// <param name="ldc">the leading dimension of matrix a</param>
-        internal static void GEMM(int m, int n, int k,
+        internal static void GEMMInner(int m, int n, int k,
             double alpha,
-            ref double a, int lda,
-            ref double b, int ldb,
+            ReadOnlyMemory<double> aMem, int lda,
+            ReadOnlyMemory<double> bMem, int ldb,
             double beta,
-            ref double c, int ldc)
+            Memory<double> cMem, int ldc)
         {
             int mc = DGEMM.mc;
             int nc = DGEMM.nc;
             int kc = DGEMM.kc;
-            ScalMatrixC(m, n, ref c, ldc, beta);
+            ScalMatrixC(m, n, cMem, ldc, beta);
             double[] packedA = ArrayPool<double>.Shared.Rent(mc * kc);
             double[] packedB = ArrayPool<double>.Shared.Rent(kc * nc);
-            ref double packedARef = ref packedA[0];
-            ref double packedBRef = ref packedB[0];
 
             int i;
             for (i = 0; i < m; i += mc)
@@ -165,17 +162,19 @@ namespace DGEMMSharp.Model
                 for (q = 0; q < k; q += kc)
                 {
                     int kc2 = Math.Min(k - q, kc);
-                    PackMatrixA(mc2, kc2, ref Unsafe.Add(ref a, i * lda + q), lda, ref packedARef, alpha);
+                    ReadOnlyMemory<double> aBlock = aMem[(i * lda + q)..];
+                    PackMatrixA(mc2, kc2, aBlock, lda, packedA, alpha);
                     int j;
                     for (j = 0; j < n; j += nc)
                     {
                         int nc2 = Math.Min(n - j, nc);
-                        PackMatrixB(kc2, nc2, ref Unsafe.Add(ref b, q * ldb + j), ldb, ref packedBRef);
+                        ReadOnlyMemory<double> bBlock = bMem[(q * ldb + j)..];
+                        PackMatrixB(kc2, nc2, bBlock, ldb, packedB);
+                        Memory<double> cBlock = cMem[(i * ldc + j)..];
                         MacroKernel(mc2, nc2, kc2,
-                            ref packedARef,
-                            ref packedBRef,
+                            packedA, packedB,
                             beta,
-                            ref Unsafe.Add(ref c, i * ldc + j), ldc);
+                            cBlock, ldc);
                     }
                 }
             }
@@ -199,35 +198,42 @@ namespace DGEMMSharp.Model
         /// Iterates over the packed blocks and dispatches to the vectorized microkernel.
         /// </remarks>
         internal static void MacroKernel(int mc, int nc, int k,
-            ref double a,
-            ref double b, 
+            ReadOnlyMemory<double> aMem,
+            ReadOnlyMemory<double> bMem, 
             double beta,
-            ref double c, int ldc)
+            Memory<double> cMem, int ldc)
         {
-            int mr = DGEMM.mr;
-            int nr = DGEMM.nr;
-            Span<double> cBuffer = stackalloc double[mr * nr];
+            var invoker = new DGEMMParallelInvoker(
+                mc, nc, k, mr, nr, aMem, bMem, beta, cMem, ldc);
+            var times = (mc + mr - 1) / mr;
+            ParallelHelper.For(0, times, invoker, 16);
+            //int mr = DGEMM.mr;
+            //int nr = DGEMM.nr;
+            //Span<double> cBuffer = stackalloc double[mr * nr];
 
-            ref double aRef = ref a;
-            ref double bRef = ref b;
-            ref double cRef = ref c;
-            ref double cBufHead = ref cBuffer[0];
-            for (int i = 0; i < mc; i += mr)
-            {
-                int m = Math.Min(mc - i, mr);
-                bRef = ref b;
-                cRef = ref Unsafe.Add(ref c, i * ldc);
-                for (int j = 0; j < nc; j += nr)
-                {
-                    int n = Math.Min(nc - j, nr);
-                    LoadFromMatrixC(m, n, ref cBufHead, ref cRef, ldc);
-                    MicroKernelFunc(k, ref aRef, ref bRef, ref cBufHead, nr);
-                    StoreBackMatrixC(m, n, ref cBufHead, ref cRef, ldc);
-                    bRef = ref Unsafe.Add(ref bRef, nr * k);
-                    cRef = ref Unsafe.Add(ref cRef, nr);
-                }
-                aRef = ref Unsafe.Add(ref aRef, mr * k);
-            }
+            //ref double a = ref aMem.Span.DangerousGetReference();
+            //ref double b = ref bMem.Span.DangerousGetReference();
+            //ref double c = ref cMem.Span.DangerousGetReference();
+            //ref double aRef = ref a;
+            //ref double bRef = ref b;
+            //ref double cRef = ref c;
+            //ref double cBufHead = ref cBuffer[0];
+            //for (int i = 0; i < mc; i += mr)
+            //{
+            //    int m = Math.Min(mc - i, mr);
+            //    bRef = ref b;
+            //    cRef = ref Unsafe.Add(ref c, i * ldc);
+            //    for (int j = 0; j < nc; j += nr)
+            //    {
+            //        int n = Math.Min(nc - j, nr);
+            //        LoadFromMatrixC(m, n, ref cBufHead, ref cRef, ldc);
+            //        MicroKernelFunc(k, ref aRef, ref bRef, ref cBufHead, nr);
+            //        StoreBackMatrixC(m, n, ref cBufHead, ref cRef, ldc);
+            //        bRef = ref Unsafe.Add(ref bRef, nr * k);
+            //        cRef = ref Unsafe.Add(ref cRef, nr);
+            //    }
+            //    aRef = ref Unsafe.Add(ref aRef, mr * k);
+            //}
         }
 
         /// <summary>
@@ -335,10 +341,11 @@ namespace DGEMMSharp.Model
         /// Reorganizes data from row-major to a blocked layout to enable sequential memory access
         /// during microkernel computation. Reduces cache misses by ensuring temporal locality.
         /// </remarks>
-        private static void PackMatrixA(int mc, int kc, ref double a, int lda, ref double aTo, double alpha)
+        private static void PackMatrixA(int mc, int kc, ReadOnlyMemory<double> aMem, int lda, Memory<double> aToMem, double alpha)
         {
+            ref double a = ref Unsafe.AsRef(in aMem.Span.DangerousGetReference());
             ref double aPtr = ref a;
-            ref double aToRef = ref aTo;
+            ref double aToRef = ref aToMem.Span.DangerousGetReference();
             int last = mc % mr; 
             int ir = 0;
             for (; ir <= mc - mr; ir += mr)
@@ -388,45 +395,20 @@ namespace DGEMMSharp.Model
         /// <param name="ldb">Leading dimension of B.</param>
         /// <param name="bTo">Target packed memory location.</param>
         /// <remarks>
-        private static void PackMatrixB(int kc, int nc, ref double b, int ldb, ref double bTo)
+        private static void PackMatrixB(int kc, int nc, ReadOnlyMemory<double> bMem, int ldb, double[] bTo)
         {
-            ref double bPtr = ref b;
-            ref double bToRef = ref bTo;
-            int last = mc % mr;
-            int jr = 0;
-            for (; jr <= nc - nr; jr += nr)
-            {
-                bPtr = ref Unsafe.Add(ref b, jr);
-                for (int qc = 0; qc < kc; qc++)
-                {
-                    ref double bRef = ref bPtr;
-                    // Can little span copying be automatically accelerated by SIMD?
-                    MemoryMarshal.CreateReadOnlySpan(ref bPtr, nr)
-                        .CopyTo(MemoryMarshal.CreateSpan(ref bToRef, nr));
-                    bPtr = ref Unsafe.Add(ref bPtr, ldb);
-                    bToRef = ref Unsafe.Add(ref bToRef, nr);
-                }
-            }
-            if(last > 0)
-            {
-                bPtr = ref Unsafe.Add(ref b, jr);
-                for (int qc = 0; qc < kc; qc++)
-                {
-                    Span<double> span = MemoryMarshal.CreateSpan(ref bToRef, nr);
-                    MemoryMarshal.CreateReadOnlySpan(ref bPtr, last)
-                        .CopyTo(span);
-                    span[last..].Clear();
-                    bPtr = ref Unsafe.Add(ref bPtr, ldb);
-                    bToRef = ref Unsafe.Add(ref bToRef, nr);
-                }
-            }
+            PackBParallelInvoker invoker = new(kc, nc, nr,
+                bMem, ldb, bTo);
+            int times = (nc + nr - 1) / nr;
+            ParallelHelper.For(0, times, invoker, 16);
+            return;
         }
 
-        private static void ScalMatrixC(int mc, int nc, ref double c, int ldc, double beta)
+        private static void ScalMatrixC(int mc, int nc, Memory<double> c, int ldc, double beta)
         {
             //Here simply use Vector to accelerate the process.
             bool simd = Vector.IsHardwareAccelerated;
-            //If beta is 0, dirctly fill c to 0.
+            //If beta is 0, directly fill c to 0.
             bool zero = beta == 0;
             //use common simd with loop unrolling.
             if (simd)
@@ -434,7 +416,7 @@ namespace DGEMMSharp.Model
                 int vecSize = Vector<double>.Count;
                 int last = nc % vecSize;
                 Vector<double> betaVec = Vector.Create(beta);
-                ref double cPtr = ref c;
+                ref double cPtr = ref c.Span[0];
                 if (zero)
                 {
                     for (int i = 0; i < mc; i++)
@@ -502,7 +484,7 @@ namespace DGEMMSharp.Model
             else
             {
                 int unrollSize = 4;
-                ref double cPtr = ref c;
+                ref double cPtr = ref c.Span[0];
                 if (zero)
                 {
                     for (int i = 0; i < mc; i++)
@@ -665,7 +647,7 @@ namespace DGEMMSharp.Model
                     }
                     for (; j < n; j++)
                     {
-                        cRef = cBufferHead;
+                        cRef = cBufferRef;
                         cBufferRef = ref Unsafe.Add(ref cBufferRef, 1);
                         cRef = ref Unsafe.Add(ref cRef, 1);
                     }
@@ -683,22 +665,19 @@ namespace DGEMMSharp.Model
                     int j = 0;
                     for (; j <= n - unrollSize; j += unrollSize)
                     {
-                        cRef = cBufferHead;
-                        cBufferRef = ref Unsafe.Add(ref cBufferRef, 1);
+                        cRef = cBufferRef;
                         cRef = ref Unsafe.Add(ref cRef, 1);
-                        cRef = cBufferHead;
-                        cBufferRef = ref Unsafe.Add(ref cBufferRef, 1);
+                        cRef = Unsafe.Add(ref cBufferRef, 1);
                         cRef = ref Unsafe.Add(ref cRef, 1);
-                        cRef = cBufferHead;
-                        cBufferRef = ref Unsafe.Add(ref cBufferRef, 1);
+                        cRef = Unsafe.Add(ref cBufferRef, 2);
                         cRef = ref Unsafe.Add(ref cRef, 1);
-                        cRef = cBufferHead;
-                        cBufferRef = ref Unsafe.Add(ref cBufferRef, 1);
+                        cRef = Unsafe.Add(ref cBufferRef, 3);
                         cRef = ref Unsafe.Add(ref cRef, 1);
+                        cBufferRef = ref Unsafe.Add(ref cBufferRef, 1);
                     }
                     for (; j < n; j++)
                     {
-                        cRef = cBufferHead;
+                        cRef = cBufferRef;
                         cBufferRef = ref Unsafe.Add(ref cBufferRef, 1);
                         cRef = ref Unsafe.Add(ref cRef, 1);
                     }
@@ -862,8 +841,6 @@ namespace DGEMMSharp.Model
                 VectorType.Vector512 => typeof(Vector512<double>),
                 _ => throw new NotSupportedException("Unsupported vector type")
             };
-            MethodInfo createSpan = ILUtils.CreateSpan;
-            MethodInfo createVectorFromSpan = ILUtils.DynamicCreateVectorFromSpan(StaticSIMDType);
             MethodInfo createVectorFromScalar = ILUtils.DynamicCreateVectorFromScalar(StaticSIMDType);
             MethodInfo implictConv = ILUtils.ConvSpanAsReadOnly;
 
@@ -886,42 +863,49 @@ namespace DGEMMSharp.Model
             il.Emit(OpCodes.Br, loopCmp);
             il.MarkLabel(loopBegin);
 
-            LocalBuilder[] bAndAVars = new LocalBuilder[mr + nv];
-            // define the local variables for a and b
-            for (int j = 0; j < nv; j++)
+            LocalBuilder[] bVars = new LocalBuilder[mr];
+            // define the local variables for b
+            //Vector256<double> bVec0 = Vector256.LoadUnsafe(ref bRef);
+            {
+                var loadUnsafe = ILUtils.DynamicLoadVectorUnsafe(StaticSIMDType);
+                var bVec = il.DeclareLocal(simdType);
+                bVars[0] = bVec;
+                il.EmitLoadLocal(bRef);
+                il.EmitCall(OpCodes.Call, loadUnsafe, null);
+                il.EmitStoreLocal(bVec);
+            }
+            //Vector256<double> bVec1 = Vector256.LoadUnsafe(ref bRef, 4);
+            var loadUnsafeWithOffset = ILUtils.DynamicLoadVectorUnsafeWithOffset(StaticSIMDType);
+            for (int j = 1; j < nv; j++)
             {
                 var bVec = il.DeclareLocal(simdType);
-                bAndAVars[j] = bVec;
+                bVars[j] = bVec;
                 il.EmitLoadLocal(bRef);
-                il.EmitLoadInt(simdSize);
-                il.EmitCall(OpCodes.Call, createSpan, null);
-                il.EmitCall(OpCodes.Call, implictConv, null);
-                il.EmitCall(OpCodes.Call, createVectorFromSpan, null);
+                il.EmitLoadInt(j * simdSize);
+                il.Emit(OpCodes.Conv_I);
+                il.EmitCall(OpCodes.Call, loadUnsafeWithOffset, null);
                 il.EmitStoreLocal(bVec);
-                il.EmitAddRef(bRef, simdSize);
             }
-
-            // define the local variables for a
-            for (int i = 0; i < mr; i++)
-            {
-                var aVec = il.DeclareLocal(simdType);
-                bAndAVars[i + nv] = aVec;
-                il.EmitLoadLocal(aRef);
-                il.Emit(OpCodes.Ldind_R8);
-                il.EmitCall(OpCodes.Call, createVectorFromScalar, null);
-                il.EmitStoreLocal(aVec);
-                il.EmitAddRef(aRef, 1);
-            }
+            il.EmitAddRef(bRef, simdSize * nv);
 
             // FMA
             int offset = mr * nv;
             for (int i = 0; i < mr; i++)
             {
-                for (int j = 0; j < nv; j++)
+                // define the local variables for a
+                var aVec = il.DeclareLocal(simdType);
+                il.EmitLoadLocal(aRef);
+                il.Emit(OpCodes.Ldind_R8);
+                il.EmitCall(OpCodes.Call, createVectorFromScalar, null);
+                il.EmitStoreLocal(aVec);
+                var cVec = cVars[i * nv + offset];
+                var bVec = bVars[0];
+                il.EmitFMA(simdType, aVec, bVec, cVec);
+                il.EmitAddRef(aRef, 1);
+                for (int j = 1; j < nv; j++)
                 {
-                    var cVec = cVars[i * nv + j + offset];
-                    var bVec = bAndAVars[j];
-                    var aVec = bAndAVars[i + nv];
+                    cVec = cVars[i * nv + j + offset];
+                    bVec = bVars[j];
                     il.EmitFMA(simdType, aVec, bVec, cVec);
                 }
             }

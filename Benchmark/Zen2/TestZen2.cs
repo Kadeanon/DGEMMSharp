@@ -13,14 +13,8 @@ namespace DGEMMSharp.Benchmark.Zen2
     /// <summary>
     /// It is tested with Amd Ryzen 5 4600H in Windows 10.
     /// </summary>
-    public partial class TestZen2 : BenchmarkBase
+    public abstract class TestZen2 : BenchmarkBase
     {
-        public override IEnumerable<int> TestValues()
-        {
-            yield return 1024 * 1;
-            yield return 1024 * 4;
-            yield return 1024 * 8;
-        }
 
         [Benchmark]
         public void Auto()

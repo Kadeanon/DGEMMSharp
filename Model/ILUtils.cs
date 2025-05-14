@@ -156,6 +156,30 @@ namespace DGEMMSharp.Model
             !.MakeGenericMethod(DoubleType);
 
         /// <summary>
+        /// VectorX{double} vec =  VectorX.LoadUnsafe(ref xRef);
+        /// </summary>
+        internal static MethodInfo DynamicLoadVectorUnsafe(Type staticSimdType)
+            => staticSimdType.GetMethods(BindingFlags.Public | BindingFlags.Static)
+            .FirstOrDefault(
+            x => x.Name == "LoadUnsafe" &&
+            x.ContainsGenericParameters &&
+            x.MakeGenericMethod(DoubleType).GetParameters() is [var refParamInfo]
+            && refParamInfo.ParameterType == DoubleType.MakeByRefType())
+            !.MakeGenericMethod(DoubleType);
+
+        /// <summary>
+        /// VectorX{double} vec =  VectorX.LoadUnsafe(ref xRef, offset);
+        /// </summary>
+        internal static MethodInfo DynamicLoadVectorUnsafeWithOffset(Type staticSimdType)
+            => staticSimdType.GetMethods(BindingFlags.Public | BindingFlags.Static)
+            .FirstOrDefault(
+            x => x.Name == "LoadUnsafe" &&
+            x.ContainsGenericParameters &&
+            x.MakeGenericMethod(DoubleType).GetParameters() is [var refParamInfo, var _]
+            && refParamInfo.ParameterType == DoubleType.MakeByRefType())
+            !.MakeGenericMethod(DoubleType);
+
+        /// <summary>
         /// VectorX{double} vec =  VectorX.Create(a);
         /// </summary>
         internal static MethodInfo DynamicCreateVectorFromScalar(Type staticSimdType)

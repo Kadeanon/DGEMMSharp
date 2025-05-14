@@ -54,33 +54,14 @@ namespace DGEMMSharp.Benchmark
             Random r = new();
             foreach (ref var val in ArrayA.AsSpan())
             {
-                val = r.NextDouble();
+                val = 1; r.NextDouble();
             }
             foreach (ref var val in ArrayB.AsSpan())
             {
                 val = r.NextDouble();
             }
-            MKLNET.MKL.set_threading_layer(MklThreading.SEQUENTIAL);
-            // single-thread OpenBlas is slower than MKL
-            BlasHelpers.OpenBlasSetNumThreads(1);
             ExtraSetup();
         }
-
-
-        [Benchmark(Baseline = true)]
-        public unsafe void MKL()
-        {
-            BlasHelpers.MKLDgemm(
-                M, N, K, ArrayA, K, ArrayB, N, ArrayC, N);
-        }
-
-        [Benchmark]
-        public unsafe void OpenBlas()
-        {
-            BlasHelpers.OpenBlasDgemm(
-                M, N, K, ArrayA, K, ArrayB, N, ArrayC, N);
-        }
-
 
         public virtual void ExtraSetup()
         {
