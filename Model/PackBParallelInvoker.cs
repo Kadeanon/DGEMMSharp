@@ -12,20 +12,20 @@ namespace DGEMMSharp.Model
 {
     public partial class DGEMM
     {
-        internal readonly struct PackBParallelInvoker(int kc, int nc, int nr, ReadOnlyMemory<double> bMem, int ldb, double[] bToMem) : IAction
+        internal readonly struct PackBParallelInvoker(int kc, int nc, int nr, ReadOnlyMemory<double> bMem, int ldb, double[] bTo) : IAction
         {
             readonly int kc = kc;
             readonly int nc = nc;
             readonly int nr = nr;
             readonly ReadOnlyMemory<double> bMem = bMem;
             readonly int ldb = ldb;
-            readonly double[] bToMem = bToMem;
+            readonly double[] bTo = bTo;
 
             public void Invoke(int jIndex)
             {
                 int j = jIndex * nr;
                 ref double bRef = ref bMem.Span.DangerousGetReferenceAt(j);
-                ref double bToRef = ref bToMem[kc * j];
+                ref double bToRef = ref bTo[kc * j];
                 int jc = Math.Min(nc - j, nr);
                 if (jc != nr)
                 {

@@ -54,7 +54,7 @@ namespace DGEMMSharp.Benchmark
             Random r = new();
             foreach (ref var val in ArrayA.AsSpan())
             {
-                val = 1; r.NextDouble();
+                val = r.NextDouble();
             }
             foreach (ref var val in ArrayB.AsSpan())
             {

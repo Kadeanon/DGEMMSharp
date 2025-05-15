@@ -40,7 +40,7 @@ namespace DGEMMSharp.Benchmark
         {
             int length = (int)benchmarkCase.Parameters["Length"];
 
-            long totalFpOps = 2L * length * length * length;
+            double totalFpOps = 2L * length * length * length;
             var statistics = summary[benchmarkCase]?.ResultStatistics!;
             return totalFpOps / statistics?.Mean ?? 0;
         }

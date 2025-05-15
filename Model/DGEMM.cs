@@ -12,6 +12,7 @@ using System.Reflection.Emit;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Runtime.Intrinsics;
+using System.Runtime.Intrinsics.X86;
 using System.Text;
 using System.Threading.Tasks;
 
@@ -65,6 +66,12 @@ namespace DGEMMSharp.Model
                 VectorLevel = VectorType.Scalar;
                 throw new NotSupportedException("Not supported yet!");
             }
+
+            if (mc % mr != 0)
+                throw new ArgumentException($"Argument mc {mc} should be divided by mr {mr}!");
+            if (nc % nr != 0)
+                throw new ArgumentException($"Argument nc {nc} should be divided by nr {nr}!");
+
             BuildKernel();
         }
 
@@ -151,8 +158,11 @@ namespace DGEMMSharp.Model
             int nc = DGEMM.nc;
             int kc = DGEMM.kc;
             ScalMatrixC(m, n, cMem, ldc, beta);
-            double[] packedA = ArrayPool<double>.Shared.Rent(mc * kc);
-            double[] packedB = ArrayPool<double>.Shared.Rent(kc * nc);
+            int mPacklen = m > mc ? mc : ((m + mr - 1) / mr * mr);
+            int nPacklen = n > nc ? nc : ((n + nr - 1) / nr * nr);
+            int kPacklen = Math.Min(k, kc);
+            double[] packedA = ArrayPool<double>.Shared.Rent(mPacklen * kPacklen);
+            double[] packedB = ArrayPool<double>.Shared.Rent(kPacklen * nPacklen);
 
             int i;
             for (i = 0; i < m; i += mc)
@@ -207,22 +217,16 @@ namespace DGEMMSharp.Model
                 mc, nc, k, mr, nr, aMem, bMem, beta, cMem, ldc);
             var times = (mc + mr - 1) / mr;
             ParallelHelper.For(0, times, invoker, 16);
-            //int mr = DGEMM.mr;
-            //int nr = DGEMM.nr;
-            //Span<double> cBuffer = stackalloc double[mr * nr];
 
-            //ref double a = ref aMem.Span.DangerousGetReference();
-            //ref double b = ref bMem.Span.DangerousGetReference();
-            //ref double c = ref cMem.Span.DangerousGetReference();
-            //ref double aRef = ref a;
-            //ref double bRef = ref b;
-            //ref double cRef = ref c;
+            //Span<double> cBuffer = stackalloc double[mr * nr];
             //ref double cBufHead = ref cBuffer[0];
-            //for (int i = 0; i < mc; i += mr)
+            //for (int iIndex = 0; iIndex < times; iIndex++)
             //{
+            //    int i = iIndex * mr;
             //    int m = Math.Min(mc - i, mr);
-            //    bRef = ref b;
-            //    cRef = ref Unsafe.Add(ref c, i * ldc);
+            //    ref double aRef = ref aMem.Span.DangerousGetReferenceAt(i * k);
+            //    ref double bRef = ref bMem.Span.DangerousGetReference();
+            //    ref double cRef = ref cMem.Span.DangerousGetReferenceAt(i * ldc);
             //    for (int j = 0; j < nc; j += nr)
             //    {
             //        int n = Math.Min(nc - j, nr);
@@ -232,7 +236,6 @@ namespace DGEMMSharp.Model
             //        bRef = ref Unsafe.Add(ref bRef, nr * k);
             //        cRef = ref Unsafe.Add(ref cRef, nr);
             //    }
-            //    aRef = ref Unsafe.Add(ref aRef, mr * k);
             //}
         }
 
@@ -284,6 +287,18 @@ namespace DGEMMSharp.Model
             Span<double> cSpan31 = MemoryMarshal.CreateSpan(ref c1, 4);
             Vector256<double> cVec31 = Vector256.Create<double>(cSpan31);
             c1 = ref Unsafe.Add(ref c1, ldc);
+            Span<double> cSpan40 = MemoryMarshal.CreateSpan(ref c, 4);
+            Vector256<double> cVec40 = Vector256.Create<double>(cSpan40);
+            c = ref Unsafe.Add(ref c, ldc);
+            Span<double> cSpan41 = MemoryMarshal.CreateSpan(ref c1, 4);
+            Vector256<double> cVec41 = Vector256.Create<double>(cSpan41);
+            c1 = ref Unsafe.Add(ref c1, ldc);
+            Span<double> cSpan50 = MemoryMarshal.CreateSpan(ref c, 4);
+            Vector256<double> cVec50 = Vector256.Create<double>(cSpan50);
+            c = ref Unsafe.Add(ref c, ldc);
+            Span<double> cSpan51 = MemoryMarshal.CreateSpan(ref c1, 4);
+            Vector256<double> cVec51 = Vector256.Create<double>(cSpan51);
+            c1 = ref Unsafe.Add(ref c1, ldc);
 
             #endregion
 
@@ -297,23 +312,35 @@ namespace DGEMMSharp.Model
                 Vector256<double> bVec1 = Vector256.Create<double>(MemoryMarshal.CreateSpan(ref bRef, 4));
                 bRef = ref Unsafe.Add(ref bRef, 4);
 
-                Vector256<double> aVex0 = Vector256.Create(aRef);
+                Vector256<double> aVex = Vector256.Create(aRef);
                 aRef = ref Unsafe.Add(ref aRef, 1);
-                Vector256<double> aVec1 = Vector256.Create(aRef);
-                aRef = ref Unsafe.Add(ref aRef, 1);
-                Vector256<double> aVec2 = Vector256.Create(aRef);
-                aRef = ref Unsafe.Add(ref aRef, 1);
-                Vector256<double> aVec3 = Vector256.Create(aRef);
-                aRef = ref Unsafe.Add(ref aRef, 1);
+                cVec00 = Fma.MultiplyAdd(aVex, bVec0, cVec00);
+                cVec01 = Fma.MultiplyAdd(aVex, bVec1, cVec01);
 
-                cVec00 += aVex0 * bVec0;
-                cVec01 += aVex0 * bVec1;
-                cVec10 += aVec1 * bVec0;
-                cVec11 += aVec1 * bVec1;
-                cVec20 += aVec2 * bVec0;
-                cVec21 += aVec2 * bVec1;
-                cVec30 += aVec3 * bVec0;
-                cVec31 += aVec3 * bVec1;
+                aVex = Vector256.Create(aRef);
+                aRef = ref Unsafe.Add(ref aRef, 1);
+                cVec10 = Fma.MultiplyAdd(aVex, bVec0, cVec10);
+                cVec11 = Fma.MultiplyAdd(aVex, bVec1, cVec11);
+
+                aVex = Vector256.Create(aRef);
+                aRef = ref Unsafe.Add(ref aRef, 1);
+                cVec20 = Fma.MultiplyAdd(aVex, bVec0, cVec20);
+                cVec21 = Fma.MultiplyAdd(aVex, bVec1, cVec21);
+
+                aVex = Vector256.Create(aRef);
+                aRef = ref Unsafe.Add(ref aRef, 1);
+                cVec30 = Fma.MultiplyAdd(aVex, bVec0, cVec30);
+                cVec31 = Fma.MultiplyAdd(aVex, bVec1, cVec31);
+
+                aVex = Vector256.Create(aRef);
+                aRef = ref Unsafe.Add(ref aRef, 1);
+                cVec40 = Fma.MultiplyAdd(aVex, bVec0, cVec40);
+                cVec41 = Fma.MultiplyAdd(aVex, bVec1, cVec41);
+
+                aVex = Vector256.Create(aRef);
+                aRef = ref Unsafe.Add(ref aRef, 1);
+                cVec50 = Fma.MultiplyAdd(aVex, bVec0, cVec50);
+                cVec51 = Fma.MultiplyAdd(aVex, bVec1, cVec51);
             }
             #endregion
 
@@ -326,6 +353,10 @@ namespace DGEMMSharp.Model
             cVec21.CopyTo(cSpan21);
             cVec30.CopyTo(cSpan30);
             cVec31.CopyTo(cSpan31);
+            cVec40.CopyTo(cSpan40);
+            cVec41.CopyTo(cSpan41);
+            cVec50.CopyTo(cSpan50);
+            cVec51.CopyTo(cSpan51);
             #endregion
         }
 
@@ -401,7 +432,6 @@ namespace DGEMMSharp.Model
                 bMem, ldb, bTo);
             int times = (nc + nr - 1) / nr;
             ParallelHelper.For(0, times, invoker, 16);
-            return;
         }
 
         private static void ScalMatrixC(int mc, int nc, Memory<double> c, int ldc, double beta)
@@ -706,12 +736,12 @@ namespace DGEMMSharp.Model
         /// 3. Automatically adapts to available SIMD capabilities<br />
         /// Uses System.Reflection.Emit to generate hardware-specific optimizations at runtime.
         /// </remarks>
-        [MemberNotNullAttribute(nameof(MicroKernelFunc))]
+        [MemberNotNull(nameof(MicroKernelFunc))]
         private static void BuildKernel()
         {
             Type intType = typeof(int);
             Type doubleRefType = typeof(double).MakeByRefType();
-            DynamicMethod dynamicKernel = new DynamicMethod("dynamicKernel",
+            DynamicMethod dynamicKernel = new("dynamicKernel",
                 typeof(void), [intType, doubleRefType, doubleRefType, doubleRefType, intType]);
             ILGenerator il = dynamicKernel.GetILGenerator();
 
@@ -736,7 +766,6 @@ namespace DGEMMSharp.Model
         private static LocalBuilder[] BuildLoadVectorC(this ILGenerator il, int mr, int nv, VectorType vectorType)
         {
             Type doubleType = typeof(double);
-            Type intType = typeof(int);
             Type doubleRefType = doubleType.MakeByRefType();
 
             Type simdType = vectorType switch
@@ -842,7 +871,6 @@ namespace DGEMMSharp.Model
                 _ => throw new NotSupportedException("Unsupported vector type")
             };
             MethodInfo createVectorFromScalar = ILUtils.DynamicCreateVectorFromScalar(StaticSIMDType);
-            MethodInfo implictConv = ILUtils.ConvSpanAsReadOnly;
 
             // ref double aRef = ref a;
             var aRef = il.DeclareLocal(doubleRefType);

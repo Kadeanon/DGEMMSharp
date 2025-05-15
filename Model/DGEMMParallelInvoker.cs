@@ -34,7 +34,7 @@ namespace DGEMMSharp.Model
                 ref double cBufHead = ref cBuffer[0];
                 int i = iIndex * mr;
                 int m = Math.Min(mc - i, mr);
-                ref double aRef = ref aMem.Span.DangerousGetReferenceAt(mr * k);
+                ref double aRef = ref aMem.Span.DangerousGetReferenceAt(i * k);
                 ref double bRef = ref bMem.Span.DangerousGetReference();
                 ref double cRef = ref cMem.Span.DangerousGetReferenceAt(i * ldc);
                 for (int j = 0; j < nc; j += nr)
@@ -46,7 +46,6 @@ namespace DGEMMSharp.Model
                     bRef = ref Unsafe.Add(ref bRef, nr * k);
                     cRef = ref Unsafe.Add(ref cRef, nr);
                 }
-                aRef = ref Unsafe.Add(ref aRef, mr * k);
             }
         }
     }
