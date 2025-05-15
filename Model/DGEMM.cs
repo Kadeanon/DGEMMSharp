@@ -217,31 +217,11 @@ namespace DGEMMSharp.Model
                 mc, nc, k, mr, nr, aMem, bMem, beta, cMem, ldc);
             var times = (mc + mr - 1) / mr;
             ParallelHelper.For(0, times, invoker, 16);
-
-            //Span<double> cBuffer = stackalloc double[mr * nr];
-            //ref double cBufHead = ref cBuffer[0];
-            //for (int iIndex = 0; iIndex < times; iIndex++)
-            //{
-            //    int i = iIndex * mr;
-            //    int m = Math.Min(mc - i, mr);
-            //    ref double aRef = ref aMem.Span.DangerousGetReferenceAt(i * k);
-            //    ref double bRef = ref bMem.Span.DangerousGetReference();
-            //    ref double cRef = ref cMem.Span.DangerousGetReferenceAt(i * ldc);
-            //    for (int j = 0; j < nc; j += nr)
-            //    {
-            //        int n = Math.Min(nc - j, nr);
-            //        LoadFromMatrixC(m, n, ref cBufHead, ref cRef, ldc);
-            //        MicroKernelFunc(k, ref aRef, ref bRef, ref cBufHead, nr);
-            //        StoreBackMatrixC(m, n, ref cBufHead, ref cRef, ldc);
-            //        bRef = ref Unsafe.Add(ref bRef, nr * k);
-            //        cRef = ref Unsafe.Add(ref cRef, nr);
-            //    }
-            //}
         }
 
         /// <summary>
         /// Vectorized microkernel using SIMD instructions for fused multiply-add (FMA) operations.
-        /// It is a example method.
+        /// It is a reference method.
         /// </summary>
         /// <param name="k">Common dimension size.</param>
         /// <param name="a">Reference to current A sub-block.</param>
@@ -252,9 +232,10 @@ namespace DGEMMSharp.Model
         /// 1. Loads 4x8 block of C into vector registers
         /// 2. Performs outer product computation using FMA instructions
         /// 3. Writes results back to memory
-        /// Uses Vector256<double> for AVX2 optimization (4 double elements per vector).
+        /// Uses <see cref="Vector256{double}"/> for AVX2 optimization (4 double elements per vector).
+        /// Prefetch is NOT used yet.
         /// </remarks>
-        internal static void MicroKernel(int k,
+        internal static void RefMicroKernel(int k,
             ref double a,
             ref double b,
             ref double c, int ldc)
@@ -286,18 +267,6 @@ namespace DGEMMSharp.Model
             c = ref Unsafe.Add(ref c, ldc);
             Span<double> cSpan31 = MemoryMarshal.CreateSpan(ref c1, 4);
             Vector256<double> cVec31 = Vector256.Create<double>(cSpan31);
-            c1 = ref Unsafe.Add(ref c1, ldc);
-            Span<double> cSpan40 = MemoryMarshal.CreateSpan(ref c, 4);
-            Vector256<double> cVec40 = Vector256.Create<double>(cSpan40);
-            c = ref Unsafe.Add(ref c, ldc);
-            Span<double> cSpan41 = MemoryMarshal.CreateSpan(ref c1, 4);
-            Vector256<double> cVec41 = Vector256.Create<double>(cSpan41);
-            c1 = ref Unsafe.Add(ref c1, ldc);
-            Span<double> cSpan50 = MemoryMarshal.CreateSpan(ref c, 4);
-            Vector256<double> cVec50 = Vector256.Create<double>(cSpan50);
-            c = ref Unsafe.Add(ref c, ldc);
-            Span<double> cSpan51 = MemoryMarshal.CreateSpan(ref c1, 4);
-            Vector256<double> cVec51 = Vector256.Create<double>(cSpan51);
             c1 = ref Unsafe.Add(ref c1, ldc);
 
             #endregion
@@ -331,16 +300,6 @@ namespace DGEMMSharp.Model
                 aRef = ref Unsafe.Add(ref aRef, 1);
                 cVec30 = Fma.MultiplyAdd(aVex, bVec0, cVec30);
                 cVec31 = Fma.MultiplyAdd(aVex, bVec1, cVec31);
-
-                aVex = Vector256.Create(aRef);
-                aRef = ref Unsafe.Add(ref aRef, 1);
-                cVec40 = Fma.MultiplyAdd(aVex, bVec0, cVec40);
-                cVec41 = Fma.MultiplyAdd(aVex, bVec1, cVec41);
-
-                aVex = Vector256.Create(aRef);
-                aRef = ref Unsafe.Add(ref aRef, 1);
-                cVec50 = Fma.MultiplyAdd(aVex, bVec0, cVec50);
-                cVec51 = Fma.MultiplyAdd(aVex, bVec1, cVec51);
             }
             #endregion
 
@@ -353,10 +312,6 @@ namespace DGEMMSharp.Model
             cVec21.CopyTo(cSpan21);
             cVec30.CopyTo(cSpan30);
             cVec31.CopyTo(cSpan31);
-            cVec40.CopyTo(cSpan40);
-            cVec41.CopyTo(cSpan41);
-            cVec50.CopyTo(cSpan50);
-            cVec51.CopyTo(cSpan51);
             #endregion
         }
 
