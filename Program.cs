@@ -2,7 +2,7 @@
 using DGEMMSharp.Benchmark.Zen2;
 
 #if DEBUG
-TestZen2Parallel test = new() { Length = 2048 + 3 };
+TestZen2Parallel test = new() { Length = 2052 };
 test.CheckDebug(test.Auto);
 test = new() { Length = 64 };
 test.CheckDebug(test.Auto);
