@@ -86,10 +86,10 @@ public class SigILEmitter
             {
                 Emitter.LoadArgument(3);
                 Emitter.StoreLocal(local);
-            }
+        }
             else
-            {
-                EmitAddRef(CRefs[j - 1],
+        {
+            EmitAddRef(CRefs[j - 1],
                     VecSize, local);
             }
             CRefs[j] = local;
@@ -171,6 +171,7 @@ public class SigILEmitter
         Emitter.Branch(loopCmp);
         Emitter.MarkLabel(loopBegin);
 
+        Local[] bVars = new Local[MR];
         // define the local variables for b
         //Vector256<double> bVec0 = Vector256.LoadUnsafe(ref bRef);
         //{
@@ -186,6 +187,8 @@ public class SigILEmitter
         ILUtils.DynamicLoadVectorUnsafeWithOffset(StaticSIMDType);
         for (int j = 0; j < NV; j++)
         {
+            var bVec = Emitter.DeclareLocal(simdType);
+            bVars[j] = bVec;
             BuildLocalVectorB(simdSize,
                 bRef, loadUnsafeWithOffset, j);
         }
