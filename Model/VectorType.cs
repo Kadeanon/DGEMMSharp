@@ -1,16 +1,9 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
+﻿namespace DGEMMSharp.Model;
 
-namespace DGEMMSharp.Model
+internal enum VectorType
 {
-    internal enum VectorType
-    {
-        Scalar,
-        Vector128,
-        Vector256,
-        Vector512
-    }
+    Scalar,
+    Vector128,
+    Vector256,
+    Vector512
 }
