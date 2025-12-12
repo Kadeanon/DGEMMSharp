@@ -1,6 +1,6 @@
-﻿using AutoGEMM.Benchmark;
-using BenchmarkDotNet.Attributes;
+﻿using BenchmarkDotNet.Attributes;
 using DGEMMSharp.Model;
+using System.Diagnostics;
 
 namespace DGEMMSharp.Benchmark.Zen2;
 

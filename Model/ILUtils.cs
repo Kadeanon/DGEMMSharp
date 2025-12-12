@@ -9,101 +9,6 @@ namespace DGEMMSharp.Model;
 
 internal static class ILUtils
 {
-    internal static void EmitLoadInt(this ILGenerator il, int value)
-    {
-        switch (value)
-        {
-            case -1:
-                il.Emit(OpCodes.Ldc_I4_M1);
-                break;
-            case 0:
-                il.Emit(OpCodes.Ldc_I4_0);
-                break;
-            case 1:
-                il.Emit(OpCodes.Ldc_I4_1);
-                break;
-            case 2:
-                il.Emit(OpCodes.Ldc_I4_2);
-                break;
-            case 3:
-                il.Emit(OpCodes.Ldc_I4_3);
-                break;
-            case 4:
-                il.Emit(OpCodes.Ldc_I4_4);
-                break;
-            case 5:
-                il.Emit(OpCodes.Ldc_I4_5);
-                break;
-            case 6:
-                il.Emit(OpCodes.Ldc_I4_6);
-                break;
-            case 7:
-                il.Emit(OpCodes.Ldc_I4_7);
-                break;
-            case 8:
-                il.Emit(OpCodes.Ldc_I4_8);
-                break;
-            case int shortValue when shortValue >= -128 && shortValue <= 127:
-                il.Emit(OpCodes.Ldc_I4_S, (byte)shortValue);
-                break;
-            default:
-                il.Emit(OpCodes.Ldc_I4, value);
-                break;
-        }
-    }
-
-    internal static void EmitStoreLocal(this ILGenerator il, LocalBuilder local)
-    {
-        int index = local.LocalIndex;
-        switch (index)
-        {
-            case 0:
-                il.Emit(OpCodes.Stloc_0);
-                break;
-            case 1:
-                il.Emit(OpCodes.Stloc_1);
-                break;
-            case 2:
-                il.Emit(OpCodes.Stloc_2);
-                break;
-            case 3:
-                il.Emit(OpCodes.Stloc_3);
-                break;
-            case int shortValue when shortValue <= 255:
-                il.Emit(OpCodes.Stloc_S, (byte)shortValue);
-                break;
-            default:
-                il.Emit(OpCodes.Stloc, index);
-                break;
-        }
-    }
-
-    internal static void EmitLoadLocal(this ILGenerator il, LocalBuilder local)
-    {
-        int index = local.LocalIndex;
-        switch (index)
-        {
-            case 0:
-                il.Emit(OpCodes.Ldloc_0);
-                break;
-            case 1:
-                il.Emit(OpCodes.Ldloc_1);
-                break;
-            case 2:
-                il.Emit(OpCodes.Ldloc_2);
-                break;
-            case 3:
-                il.Emit(OpCodes.Ldloc_3);
-                break;
-            case int shortValue when shortValue <= 255:
-                il.Emit(OpCodes.Ldloc_S, (byte)shortValue);
-                break;
-            default:
-                il.Emit(OpCodes.Ldloc, index);
-                break;
-        }
-    }
-
     internal static Type IntType { get; } = typeof(int);
 
     internal static Type DoubleType { get; } = typeof(double);
@@ -170,6 +75,16 @@ internal static class ILUtils
         x.MakeGenericMethod(DoubleType).GetParameters() is [var refParamInfo]
         && refParamInfo.ParameterType == DoubleType.MakeByRefType())
         !.MakeGenericMethod(DoubleType);
+
+    /// <summary>
+    /// VectorX{double} vec =  VectorX.LoadUnsafe(ref xRef);
+    /// </summary>
+    internal static MethodInfo DynamicStoreVectorUnsafe(Type staticSimdType)
+    {
+        var methods = staticSimdType.GetMethods(BindingFlags.Public | BindingFlags.Static);
+        return methods.FirstOrDefault(x => x.Name == "StoreUnsafe" && 
+        x.GetParameters().Length == 2)!.MakeGenericMethod(DoubleType);
+    }
 
     /// <summary>
     /// VectorX{double} vec =  VectorX.LoadUnsafe(ref xRef, offset);

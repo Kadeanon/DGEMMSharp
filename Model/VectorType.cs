@@ -1,6 +1,6 @@
 ﻿namespace DGEMMSharp.Model;
 
-internal enum VectorType
+public enum VectorType
 {
     Scalar,
     Vector128,

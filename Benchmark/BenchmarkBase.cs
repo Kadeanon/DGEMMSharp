@@ -1,5 +1,4 @@
-﻿using AutoGEMM.Benchmark;
-using BenchmarkDotNet.Attributes;
+﻿using BenchmarkDotNet.Attributes;
 using System.Diagnostics;
 
 namespace DGEMMSharp.Benchmark;

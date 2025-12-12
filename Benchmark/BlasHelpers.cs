@@ -1,7 +1,7 @@
 ﻿using System.Runtime.InteropServices;
 using MKLNET;
 
-namespace AutoGEMM.Benchmark;
+namespace DGEMMSharp.Benchmark;
 
 internal unsafe static partial class BlasHelpers
 {

@@ -31,8 +31,8 @@ public static partial class DGEMM
 
     public static SigILEmitter Emitter { get; }
 
-    public static int NumThreads { get; }   
-    #endregion
+    public static int NumThreads { get; }
+    #endregion parameters
 
     static DGEMM()
     {
