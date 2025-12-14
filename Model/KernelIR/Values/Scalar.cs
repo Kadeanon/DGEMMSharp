@@ -7,32 +7,20 @@ using System.Threading.Tasks;
 
 namespace DGEMMSharp.Model.KernelIR.Values;
 
-public abstract class Scalar(KernelDef kernel) : Value(kernel), IVariable
+public abstract class Scalar(KernelDef kernel, string name)
+    : Value(kernel, name), IVariable<double>
 {
     public abstract void LoadValue();
 
     public abstract void LoadAddr();
 
     public abstract void StoreValue();
-
-    public void Set(int value)
-    {
-        Emitter.LoadConstant(value);
-        StoreValue();
-    }
-
-    public void Inc()
-    {
-        LoadValue();
-        Emitter.LoadConstant(1);
-        Emitter.Add();
-        StoreValue();
-    }
 }
 
-public class LocalScalar(KernelDef kernel) : Scalar(kernel)
+public class LocalScalar(KernelDef kernel, string name)
+    : Scalar(kernel, name)
 {
-    public Local Local { get; } = kernel.DefVariable<int>();
+    public Local Local { get; } = kernel.DefVariable<int>(name);
 
     public override void LoadValue()
     {
@@ -50,10 +38,11 @@ public class LocalScalar(KernelDef kernel) : Scalar(kernel)
     }
 }
 
-public class ParamScalar(KernelDef kernel, ushort index) : Scalar(kernel)
+public class ParamScalar(KernelDef kernel, 
+    ushort index, string name) 
+    : Scalar(kernel, name)
 {
     ushort Index { get; } = index;
-
 
     public override void LoadValue()
     {

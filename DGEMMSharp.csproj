@@ -12,6 +12,7 @@
     <PackageReference Include="BenchmarkDotNet" Version="0.14.0" />
     <PackageReference Include="MKL.NET" Version="1.6.0" />
     <PackageReference Include="MKL.NET.win-x64" Version="2022.0.0.115" />
+    <PackageReference Include="NetFabric.DoublyLinkedList" Version="3.0.0" />
     <PackageReference Include="Sigil" Version="5.0.0" />
   </ItemGroup>
 

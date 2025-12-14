@@ -36,7 +36,7 @@ public partial class DGEMM
             for (int j = 0; j < nc; j += nr)
             {
                 int n = Math.Min(nc - j, nr);
-                LoadFromMatrixC(m, n, ref cBufHead, ref cRef, ldc);
+                LoadFromMatrixC(m, n, ref cBufHead, ref cRef, ldc, beta);
                 MicroKernelFunc(k, ref aRef, ref bRef, ref cBufHead, nr);
                 StoreBackMatrixC(m, n, ref cBufHead, ref cRef, ldc);
                 bRef = ref Unsafe.Add(ref bRef, nr * k);

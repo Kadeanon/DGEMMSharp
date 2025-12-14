@@ -4,7 +4,7 @@ using MKLNET;
 
 namespace DGEMMSharp.Benchmark.Zen2;
 
-public class TestZen2Sequence : BenchmarkBase
+public class TestZen2Sequence : TestZen2
 {
     public override IEnumerable<int> TestValues()
     {
@@ -18,13 +18,6 @@ public class TestZen2Sequence : BenchmarkBase
         MKLNET.MKL.set_threading_layer(MklThreading.SEQUENTIAL);
         // single-thread OpenBlas is slower than MKL
         BlasHelpers.OpenBlasSetNumThreads(1);
-    }
-
-    [Benchmark]
-    public void Auto()
-    {
-        DGEMM.GEMM(
-            M, N, K, ArrayA, K, ArrayB, N, ArrayC, N);
     }
 
     [Benchmark(Baseline = true)]

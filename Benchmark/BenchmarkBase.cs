@@ -1,10 +1,15 @@
 ﻿using BenchmarkDotNet.Attributes;
+using DGEMMSharp.Model;
 using System.Diagnostics;
 
 namespace DGEMMSharp.Benchmark;
 
 public abstract class BenchmarkBase
 {
+    public double Alpha { get; } = Math.PI;
+
+    public double Beta { get; } = Math.E;
+
     [ParamsSource(nameof(Values))]
     public int Length { get; set; }
 
@@ -60,16 +65,27 @@ public abstract class BenchmarkBase
     {
     }
 
+    public abstract void Auto();
+
     public void CheckDebug(Action action, double eps = 1e-8)
     {
         Setup();
-        action();
+        DGEMM.GEMM(
+            M, N, K, Alpha,
+            ArrayA, K,
+            ArrayB, N,
+            Beta,
+            ArrayC, N);
         int length = Length;
         Debug.Assert(length > 0);
         double[] actual = ArrayC; 
         double[] expected = new double[length * length];
         BlasHelpers.OpenBlasDgemm(
-            M, N, K, ArrayA, K, ArrayB, N, expected, N);
+            M, N, K, Alpha,
+            ArrayA, K, 
+            ArrayB, N,
+            Beta,
+            expected, N);
 
         bool pass = true;
         int index = 0;

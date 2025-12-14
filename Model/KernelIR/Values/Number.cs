@@ -8,32 +8,20 @@ using System.Threading.Tasks;
 
 namespace DGEMMSharp.Model.KernelIR.Values;
 
-public abstract class Number(KernelDef kernel) : Value(kernel), IVariable
+public abstract class Number(KernelDef kernel, string name) 
+    : Value(kernel, name), IVariable<int>
 {
     public abstract void LoadValue();
 
     public abstract void LoadAddr();
 
     public abstract void StoreValue();
-
-    public void Set(int value)
-    {
-        Emitter.LoadConstant(value);
-        StoreValue();
-    }
-
-    public void Inc()
-    {
-        LoadValue();
-        Emitter.LoadConstant(1);
-        Emitter.Add();
-        StoreValue();
-    }
 }
 
-public class LocalNumber(KernelDef kernel) : Number(kernel)
+public class LocalNumber(KernelDef kernel, string name) 
+    : Number(kernel, name)
 {
-    public Local Local { get; } = kernel.DefVariable<int>();
+    public Local Local { get; } = kernel.DefVariable<int>(name);
 
     public override void LoadValue()
     {
@@ -51,7 +39,9 @@ public class LocalNumber(KernelDef kernel) : Number(kernel)
     }
 }
 
-public class ParamNumber(KernelDef kernel, ushort index) : Number(kernel)
+public class ParamNumber(KernelDef kernel, 
+    ushort index, string name) 
+    : Number(kernel, name)
 {
     ushort Index { get; } = index;
 

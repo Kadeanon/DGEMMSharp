@@ -8,9 +8,12 @@ using System.Threading.Tasks;
 namespace DGEMMSharp.Model.KernelIR.Values;
 
 
-public abstract class MemRef(KernelDef def): Value(def), IVariable
+public abstract class MemRef(KernelDef def, string name)
+    : Value(def, name), IVariable<double>
 {
     public abstract void LoadAddr();
+
+    public abstract void StoreAddr();
 
     public void LoadValue()
     {
@@ -23,42 +26,12 @@ public abstract class MemRef(KernelDef def): Value(def), IVariable
         LoadAddr();
         Emitter.StoreIndirect<double>();
     }
-
-    public abstract void StoreAddr();
-
-    public void UpdateRef(int offset)
-        => SetByRefAndOffset(this, offset);
-
-    public void IncRef() => SetByRefAndOffset(this, 1);
-
-    public void SetBy(MemRef src)
-    {
-        src.LoadAddr();
-        StoreAddr();
-    }
-
-    public void SetByRefAndOffset(MemRef src, int offset)
-    {
-        src.LoadAddr();
-        Emitter.LoadConstant(offset);
-        Emitter.Call(ILUtils.AddRefDouble, null);
-        StoreAddr();
-    }
-
-    public void SetByRefAndOffset(MemRef src, int step, Number offset)
-    {
-        src.LoadAddr();
-        Emitter.LoadConstant(step);
-        offset.LoadValue();
-        Emitter.Multiply();
-        Emitter.Call(ILUtils.AddRefDouble, null);
-        StoreAddr();
-    }
 }
 
-public class LocalMemRef(KernelDef kernel) : MemRef(kernel)
+public class LocalMemRef(KernelDef kernel, string name) 
+    : MemRef(kernel, name)
 {
-    public Local Local { get; } = kernel.DefRef<double>();
+    public Local Local { get; } = kernel.DefRef<double>(name);
 
     public override void LoadAddr()
     {
@@ -70,7 +43,8 @@ public class LocalMemRef(KernelDef kernel) : MemRef(kernel)
         Emitter.StoreLocal(Local);
     }
 }
-public class ParamMemRef(KernelDef def, ushort index) : MemRef(def)
+public class ParamMemRef(KernelDef def, ushort index, string name)
+    : MemRef(def, name)
 {
     ushort Index { get; } = index;
 

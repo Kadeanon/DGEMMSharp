@@ -9,51 +9,18 @@ using System.Threading.Tasks;
 
 namespace DGEMMSharp.Model.KernelIR.Values;
 
-public class Register: Value
+public class Register(KernelDef kernel, string name)
+    : Value(kernel, name), ISrc, IDest
 {
-    public Local Local { get; }
+    public Local Local { get; } = kernel.DefRegister(name);
 
-    public Register(KernelDef kernel) : base(kernel)
-    {
-        Local = kernel.DefRegister();
-    }
-
-    public void Load(MemRef refDef)
-    {
-        refDef.LoadAddr();
-        Emitter.Call(Config.LoadVector, null);
-        Emitter.StoreLocal(Local);
-    }
-
-    public void LoadWithOffset(MemRef refDef, int offset)
-    {
-        refDef.LoadAddr();
-        Emitter.LoadConstant(offset);
-        Emitter.Convert<nint>();
-        Emitter.Call(Config.LoadVectorWithOffset, null);
-        Emitter.StoreLocal(Local);
-    }
-
-    public void Broadcast(MemRef refDef)
-    {
-        refDef.LoadValue();
-        Emitter.Call(Config.BroadcastVector, null);
-        Emitter.StoreLocal(Local);
-    }
-
-    public void UpdateFMA(Register x, Register y)
-    {
-        Emitter.LoadLocal(x.Local);
-        Emitter.LoadLocal(y.Local);
-        Emitter.LoadLocal(Local);
-        Emitter.Call(Config.MultiAdd, null);
-        Emitter.StoreLocal(Local);
-    }
-
-    public void Store(MemRef refDef)
+    public void LoadValue()
     {
         Emitter.LoadLocal(Local);
-        refDef.LoadAddr();
-        Emitter.Call(Config.StoreVector, null);
+    }
+
+    public void StoreValue()
+    {
+        Emitter.StoreLocal(Local);
     }
 }

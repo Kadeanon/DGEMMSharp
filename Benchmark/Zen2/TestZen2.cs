@@ -10,7 +10,7 @@ public abstract class TestZen2 : BenchmarkBase
 {
 
     [Benchmark]
-    public void Auto()
+    public override void Auto()
     {
         DGEMM.GEMM(
             M, N, K, ArrayA, K, ArrayB, N, ArrayC, N);

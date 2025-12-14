@@ -16,9 +16,9 @@ public class SigILEmitter
 {
     internal RuntimeConfig Config { get; }
 
-    public SigILEmitter()
+    public SigILEmitter(VectorType level)
     {
-        Config = new RuntimeConfig(DGEMM.VectorLevel);
+        Config = new RuntimeConfig(level);
     }
 
     /// <summary>

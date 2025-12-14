@@ -6,7 +6,8 @@ using System.Threading.Tasks;
 
 namespace DGEMMSharp.Model.KernelIR.Values;
 
-public class Coonstant<T>(KernelDef kernel, T value) : Value(kernel), IScalar
+public class Constant<T>(KernelDef kernel, T value)
+    : Value(kernel, value?.ToString()??"unknown"), IScalar<T>
 {
     public T Value { get; } = value;
 

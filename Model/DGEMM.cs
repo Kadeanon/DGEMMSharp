@@ -67,8 +67,10 @@ public static partial class DGEMM
             throw new ArgumentException($"Argument nc {nc} should be divided by nr {nr}!");
 
         NumThreads = Environment.ProcessorCount / 2;
-        Emitter = new SigILEmitter();
-        MicroKernelFunc = Emitter.BuildKernel(mr, nr);
+        Emitter = new SigILEmitter(VectorLevel);
+        MicroKernelFunc = 
+            //RefMicroKernel;
+            Emitter.BuildKernel(mr, nr);
     }
 
     #region DGEMM
@@ -153,7 +155,6 @@ public static partial class DGEMM
         int mc = DGEMM.mc;
         int nc = DGEMM.nc;
         int kc = DGEMM.kc;
-        ScalMatrixC(m, n, cMem, ldc, beta);
         int mPacklen = m > mc ? mc : ((m + mr - 1) / mr * mr);
         int nPacklen = n > nc ? nc : ((n + nr - 1) / nr * nr);
         int kPacklen = Math.Min(k, kc);
@@ -179,7 +180,7 @@ public static partial class DGEMM
                     Memory<double> cBlock = cMem[(i * ldc + j)..];
                     MacroKernel(mc2, nc2, kc2,
                         packedA, packedB,
-                        beta,
+                        q == 0 ? beta: 1.0,
                         cBlock, ldc);
                 }
             }
@@ -237,33 +238,23 @@ public static partial class DGEMM
         ref double c, int ldc)
     {
         #region LoadVectorC
-        ref double c0 = ref c;
-        ref double c1 = ref Unsafe.Add(ref c0, 4);
+        ref double c00 = ref c;
+        ref double c01 = ref Unsafe.Add(ref c00, 4);
+        ref double c10 = ref Unsafe.Add(ref c01, 4);
+        ref double c11 = ref Unsafe.Add(ref c10, 4);
+        ref double c20 = ref Unsafe.Add(ref c11, 4);
+        ref double c21 = ref Unsafe.Add(ref c20, 4);
+        ref double c30 = ref Unsafe.Add(ref c21, 4);
+        ref double c31 = ref Unsafe.Add(ref c30, 4);
 
-        Span<double> cSpan00 = MemoryMarshal.CreateSpan(ref c, 4);
-        Vector256<double> cVec00 = Vector256.Create<double>(cSpan00);
-        c = ref Unsafe.Add(ref c, ldc);
-        Span<double> cSpan01 = MemoryMarshal.CreateSpan(ref c1, 4);
-        Vector256<double> cVec01 = Vector256.Create<double>(cSpan01);
-        c1 = ref Unsafe.Add(ref c1, ldc);
-        Span<double> cSpan10 = MemoryMarshal.CreateSpan(ref c, 4);
-        Vector256<double> cVec10 = Vector256.Create<double>(cSpan10);
-        c = ref Unsafe.Add(ref c, ldc);
-        Span<double> cSpan11 = MemoryMarshal.CreateSpan(ref c1, 4);
-        Vector256<double> cVec11 = Vector256.Create<double>(cSpan11);
-        c1 = ref Unsafe.Add(ref c1, ldc);
-        Span<double> cSpan20 = MemoryMarshal.CreateSpan(ref c, 4);
-        Vector256<double> cVec20 = Vector256.Create<double>(cSpan20);
-        c = ref Unsafe.Add(ref c, ldc);
-        Span<double> cSpan21 = MemoryMarshal.CreateSpan(ref c1, 4);
-        Vector256<double> cVec21 = Vector256.Create<double>(cSpan21);
-        c1 = ref Unsafe.Add(ref c1, ldc);
-        Span<double> cSpan30 = MemoryMarshal.CreateSpan(ref c, 4);
-        Vector256<double> cVec30 = Vector256.Create<double>(cSpan30);
-        c = ref Unsafe.Add(ref c, ldc);
-        Span<double> cSpan31 = MemoryMarshal.CreateSpan(ref c1, 4);
-        Vector256<double> cVec31 = Vector256.Create<double>(cSpan31);
-        c1 = ref Unsafe.Add(ref c1, ldc);
+        Vector256<double> cVec00 = Vector256.LoadUnsafe(ref c00);
+        Vector256<double> cVec01 = Vector256.LoadUnsafe(ref c01);
+        Vector256<double> cVec10 = Vector256.LoadUnsafe(ref c10);
+        Vector256<double> cVec11 = Vector256.LoadUnsafe(ref c11);
+        Vector256<double> cVec20 = Vector256.LoadUnsafe(ref c20);
+        Vector256<double> cVec21 = Vector256.LoadUnsafe(ref c21);
+        Vector256<double> cVec30 = Vector256.LoadUnsafe(ref c30);
+        Vector256<double> cVec31 = Vector256.LoadUnsafe(ref c31);
 
         #endregion
 
@@ -300,14 +291,14 @@ public static partial class DGEMM
         #endregion
 
         #region StoreVectorC
-        cVec00.CopyTo(cSpan00);
-        cVec01.CopyTo(cSpan01);
-        cVec10.CopyTo(cSpan10);
-        cVec11.CopyTo(cSpan11);
-        cVec20.CopyTo(cSpan20);
-        cVec21.CopyTo(cSpan21);
-        cVec30.CopyTo(cSpan30);
-        cVec31.CopyTo(cSpan31);
+        cVec00.StoreUnsafe(ref c00);
+        cVec01.StoreUnsafe(ref c01);
+        cVec10.StoreUnsafe(ref c10);
+        cVec11.StoreUnsafe(ref c11);
+        cVec20.StoreUnsafe(ref c20);
+        cVec21.StoreUnsafe(ref c21);
+        cVec30.StoreUnsafe(ref c30);
+        cVec31.StoreUnsafe(ref c31);
         #endregion
     }
 
@@ -377,7 +368,7 @@ public static partial class DGEMM
     /// <param name="ldb">Leading dimension of B.</param>
     /// <param name="bTo">Target packed memory location.</param>
     /// <remarks>
-    private static void PackMatrixB(int kc, int nc, ReadOnlyMemory<double> bMem, int ldb, double[] bTo)
+    private static void PackMatrixB(int kc, int nc, ReadOnlyMemory<double> bMem, int ldb, Memory<double> bTo)
     {
         PackBParallelInvoker invoker = new(kc, nc, nr,
             bMem, ldb, bTo);
@@ -385,129 +376,13 @@ public static partial class DGEMM
         ParallelHelper.For(0, times, invoker, 16, NumThreads);
     }
 
-    private static void ScalMatrixC(int mc, int nc, Memory<double> c, int ldc, double beta)
-    {
-        //Here simply use Vector to accelerate the process.
-        bool simd = Vector.IsHardwareAccelerated;
-        //If beta is 0, directly fill c to 0.
-        bool zero = beta == 0;
-        //use common simd with loop unrolling.
-        if (simd)
-        {
-            int vecSize = Vector<double>.Count;
-            int last = nc % vecSize;
-            Vector<double> betaVec = Vector.Create(beta);
-            ref double cPtr = ref c.Span[0];
-            if (zero)
-            {
-                for (int i = 0; i < mc; i++)
-                {
-                    ref double cRef = ref cPtr;
-                    int j = 0;
-                    for (; j <= mc - vecSize; j += vecSize)
-                    {
-                        betaVec.StoreUnsafe(ref cRef);
-                        cRef = ref Unsafe.Add(ref cRef, vecSize);
-                    }
-                    for (; j < mc; j++)
-                    {
-                        cRef = 0.0;
-                        cRef = ref Unsafe.Add(ref cRef, 1);
-                    }
-                    cPtr = ref Unsafe.Add(ref cPtr, ldc);
-                }
-            }
-            else
-            {
-                int unrollSize = vecSize * 4;
-                for (int i = 0; i < mc; i++)
-                {
-                    ref double cRef0 = ref cPtr;
-                    ref double cRef1 = ref Unsafe.Add(ref cPtr, vecSize);
-                    ref double cRef2 = ref Unsafe.Add(ref cPtr, vecSize * 2);
-                    ref double cRef3 = ref Unsafe.Add(ref cPtr, vecSize * 3);
-                    int j = 0;
-                    for (; j <= mc - vecSize * 4; j += vecSize * 4)
-                    {
-                        Vector<double> cVec0 = Vector.LoadUnsafe(ref cRef0);
-                        cVec0 *= betaVec;
-                        cVec0.StoreUnsafe(ref cRef0);
-                        cRef0 = ref Unsafe.Add(ref cRef0, unrollSize);
-                        Vector<double> cVec1 = Vector.LoadUnsafe(ref cRef1);
-                        cVec1 *= betaVec;
-                        cVec1.StoreUnsafe(ref cRef1);
-                        cRef1 = ref Unsafe.Add(ref cRef1, unrollSize);
-                        Vector<double> cVec2 = Vector.LoadUnsafe(ref cRef2);
-                        cVec2 *= betaVec;
-                        cVec2.StoreUnsafe(ref cRef2);
-                        cRef2 = ref Unsafe.Add(ref cRef2, unrollSize);
-                        Vector<double> cVec3 = Vector.LoadUnsafe(ref cRef3);
-                        cVec3 *= betaVec;
-                        cVec3.StoreUnsafe(ref cRef3);
-                        cRef3 = ref Unsafe.Add(ref cRef3, unrollSize);
-                    }
-                    for (; j <= mc - vecSize; j += vecSize)
-                    {
-                        Vector<double> cVec = Vector.LoadUnsafe(ref cRef0);
-                        cVec *= betaVec;
-                        cVec.StoreUnsafe(ref cRef0);
-                        cRef0 = ref Unsafe.Add(ref cRef0, vecSize);
-                    }
-                    for (; j < mc; j++)
-                    {
-                        cRef0 *= beta;
-                        cRef0 = ref Unsafe.Add(ref cRef0, 1);
-                    }
-                    cPtr = ref Unsafe.Add(ref cPtr, ldc);
-                }
-            }
-        }
-        else
-        {
-            int unrollSize = 4;
-            ref double cPtr = ref c.Span[0];
-            if (zero)
-            {
-                for (int i = 0; i < mc; i++)
-                {
-                    MemoryMarshal.CreateSpan(ref cPtr, nc).Clear();
-                    cPtr = ref Unsafe.Add(ref cPtr, ldc);
-                }
-            }
-            else
-            {
-                //use *4 loop unrolling.
-                for (int i = 0; i < mc; i++)
-                {
-                    ref double cRef = ref cPtr;
-                    int j = 0;
-                    for (; j <= mc - unrollSize; j += unrollSize)
-                    {
-                        cRef = beta;
-                        cRef = ref Unsafe.Add(ref cRef, 1);
-                        cRef *= beta;
-                        cRef = ref Unsafe.Add(ref cRef, 1);
-                        cRef *= beta;
-                        cRef = ref Unsafe.Add(ref cRef, 1);
-                        cRef *= beta;
-                        cRef = ref Unsafe.Add(ref cRef, 1);
-                    }
-                    for (; j < mc; j++)
-                    {
-                        cRef *= beta;
-                        cRef = ref Unsafe.Add(ref cRef, 1);
-                    }
-                    cPtr = ref Unsafe.Add(ref cPtr, ldc);
-                }
-            }
-        }
-    }
-
-    private static void LoadFromMatrixC(int m, int n, ref double cBufferHead, ref double c, int ldc)
+    private static void LoadFromMatrixC(int m, int n, 
+        ref double cBufferHead, ref double c, int ldc, double beta)
     {
         bool simd = Vector.IsHardwareAccelerated;
         int ldcBuffer = nr;
         int cBufferLines = mr;
+        Vector<double> betaVec = Vector.Create(beta);
         if (simd)
         {
             int vecSize = Vector256<double>.Count;
@@ -524,13 +399,14 @@ public static partial class DGEMM
                 for (; j <= nTemp - vecSize; j += vecSize)
                 {
                     Vector<double> vec = Vector.LoadUnsafe(ref cRef);
+                    vec *= betaVec;
                     vec.StoreUnsafe(ref cBufferRef);
                     cBufferRef = ref Unsafe.Add(ref cBufferRef, vecSize);
                     cRef = ref Unsafe.Add(ref cRef, vecSize);
                 }
                 for (; j < nTemp; j++)
                 {
-                    cBufferRef = cRef;
+                    cBufferRef = cRef * beta;
                     cBufferRef = ref Unsafe.Add(ref cBufferRef, 1);
                     cRef = ref Unsafe.Add(ref cRef, 1);
                 }
@@ -565,22 +441,22 @@ public static partial class DGEMM
                 int j = 0;
                 for (; j <= nTemp - unrollSize; j += unrollSize)
                 {
-                    cRef = cBufferHead;
+                    cBufferHead = cRef * beta;
                     cBufferRef = ref Unsafe.Add(ref cBufferRef, 1);
                     cRef = ref Unsafe.Add(ref cRef, 1);
-                    cRef = cBufferHead;
+                    cBufferHead = cRef * beta;
                     cBufferRef = ref Unsafe.Add(ref cBufferRef, 1);
                     cRef = ref Unsafe.Add(ref cRef, 1);
-                    cRef = cBufferHead;
+                    cBufferHead = cRef * beta;
                     cBufferRef = ref Unsafe.Add(ref cBufferRef, 1);
                     cRef = ref Unsafe.Add(ref cRef, 1);
-                    cRef = cBufferHead;
+                    cBufferHead = cRef * beta;
                     cBufferRef = ref Unsafe.Add(ref cBufferRef, 1);
                     cRef = ref Unsafe.Add(ref cRef, 1);
                 }
                 for (; j < nTemp; j++)
                 {
-                    cRef = cBufferHead;
+                    cBufferHead = cRef * beta;
                     cBufferRef = ref Unsafe.Add(ref cBufferRef, 1);
                     cRef = ref Unsafe.Add(ref cRef, 1);
                 }
@@ -667,7 +543,6 @@ public static partial class DGEMM
             }
         }
     }
-
 
     public delegate void Kernel(int k,
         ref double a,

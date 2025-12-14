@@ -3,7 +3,7 @@ using DGEMMSharp.Model;
 
 namespace DGEMMSharp.Benchmark.Zen2;
 
-public class TestZen2Small : BenchmarkBase
+public class TestZen2Small : TestZen2
 {
     public override IEnumerable<int> TestValues()
     {
@@ -14,13 +14,6 @@ public class TestZen2Small : BenchmarkBase
         yield return 128;
         yield return 200;
         yield return 256;
-    }
-
-    [Benchmark]
-    public void Auto()
-    {
-        DGEMM.GEMM(
-            M, N, K, ArrayA, K, ArrayB, N, ArrayC, N);
     }
 
     [Benchmark]

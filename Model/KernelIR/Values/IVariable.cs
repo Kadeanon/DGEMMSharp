@@ -6,14 +6,29 @@ using System.Threading.Tasks;
 
 namespace DGEMMSharp.Model.KernelIR.Values;
 
-public interface IScalar
+public interface ISrc: IValue
 {
     public void LoadValue();
 }
 
-public interface IVariable: IScalar
+public interface IDest: ISrc
+{
+    public void StoreValue();
+}
+
+public interface IScalar: ISrc
+{
+}
+
+public interface IScalar<T>: IScalar
+{
+}
+
+public interface IVariable : IScalar, IDest
 {
     public void LoadAddr();
+}
 
-    public void StoreValue();
+public interface IVariable<T> : IVariable, IScalar<T>
+{
 }

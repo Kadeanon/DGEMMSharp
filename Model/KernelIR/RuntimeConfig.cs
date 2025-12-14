@@ -33,14 +33,29 @@ public class RuntimeConfig
                 throw new NotSupportedException("Not supported yet!");
         }
 
-        LoadVector =
-            ILUtils.DynamicLoadVectorUnsafe(StaticSIMDType);
-        LoadVectorWithOffset =
-            ILUtils.DynamicLoadVectorUnsafeWithOffset(StaticSIMDType);
-        StoreVector = 
-            ILUtils.DynamicStoreVectorUnsafe(StaticSIMDType);
-        BroadcastVector =
-            ILUtils.DynamicCreateVectorFromScalar(StaticSIMDType);
+        var methods = StaticSIMDType.GetMethods(BindingFlags.Public | BindingFlags.Static);
+        LoadVector = methods
+            .Where(x => x.Name == "LoadUnsafe" &&
+                x.ContainsGenericParameters)
+            .Select(x => x.MakeGenericMethod(typeof(double)))
+            .FirstOrDefault(x => x.GetParameters() is [var refParamInfo] &&
+                    refParamInfo.ParameterType == typeof(double).MakeByRefType())!;
+        LoadVectorWithOffset = methods
+            .Where(x => x.Name == "LoadUnsafe" &&
+                x.ContainsGenericParameters)
+            .Select(x => x.MakeGenericMethod(typeof(double)))
+            .FirstOrDefault(x => x.GetParameters() is [var refParamInfo, var _] &&
+                    refParamInfo.ParameterType == typeof(double).MakeByRefType())!;
+        StoreVector = methods
+            .FirstOrDefault(x => x.Name == "StoreUnsafe" &&
+                x.GetParameters().Length == 2)!
+            .MakeGenericMethod(typeof(double));
+        BroadcastVector = methods
+            .Where(x => x.Name == "Create" &&
+                x.ContainsGenericParameters)
+            .Select(x => x.MakeGenericMethod(typeof(double)))
+            .FirstOrDefault(x => x.GetParameters() is [var spanParamInfo] &&
+                    spanParamInfo.ParameterType == typeof(double))!;
 
         MultiAdd = typeof(System.Runtime.Intrinsics.X86.Fma).
             GetMethod("MultiplyAdd",
